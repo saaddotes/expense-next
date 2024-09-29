@@ -2,11 +2,11 @@
 import { useAuthContext } from "@/context/AuthContext";
 import { db } from "@/context/firebase";
 import {
-  addDoc,
   collection,
   onSnapshot,
   deleteDoc,
-  getDocs,
+  addDoc,
+  doc,
 } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
@@ -14,171 +14,140 @@ import React, { useEffect, useState } from "react";
 function Home() {
   const { user, logout } = useAuthContext();
   const router = useRouter();
-  const now = new Date();
   const [model, setModel] = useState(2);
+  const now = new Date();
+  const formattedDate = now.toISOString().split("T")[0];
 
-  const [todosForm, setTodosForm] = useState([
-    {
-      title: "",
-      amount: 0,
-      category: "Select Category",
-      date: now.getDate(),
-      note: "",
-    },
-  ]);
-
-  const [editForm, setEditFrom] = useState([
-    {
-      title: "",
-      amount: 0,
-      category: "Select Category",
-      date: now,
-      note: "",
-    },
-  ]);
-  const [backupState, setBackupState] = useState([]);
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, "tools"), (snapshot) => {
-      const updatedTodos = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setTodosForm(
-        updatedTodos.length > 0
-          ? updatedTodos
-          : [
-              {
-                title: "",
-                amount: 0,
-                category: "Select Category",
-                date: new Date(),
-                note: "",
-              },
-            ]
-      );
-      setBackupState(
-        updatedTodos.length > 0
-          ? updatedTodos
-          : [
-              {
-                title: "",
-                amount: 0,
-                category: "Select Category",
-                date: new Date(),
-                note: "",
-              },
-            ]
-      );
-    });
-    return () => unsubscribe();
-  }, []);
-
-  function newTodo() {
-    setTodosForm([
-      ...todosForm,
-      {
-        title: "",
-        amount: 0,
-        category: "Select Category",
-        date: new Date(),
-        note: "",
-      },
-    ]);
-  }
-
-  async function backupData() {
-    const colRef = collection(db, "tools");
-    const snapshot = await getDocs(colRef);
-    snapshot.forEach(async (doc) => {
-      await deleteDoc(doc.ref);
-    });
-
-    todosForm.forEach(async (todo) => {
-      if (todo.title) {
-        await addDoc(colRef, todo);
-      }
-    });
-  }
-
-  function handleInputChange(event, index, type) {
-    console.log(event, type);
-
-    if (type === "title") {
-      // setModel({...model, title : event.target.value})
-      updatedData[index] = {
-        ...updatedData[index],
-        title: event.target.value,
-      };
-    }
-
-    if (type === "amount") {
-      updatedData[index] = {
-        ...updatedData[index],
-        amount: event.target.value,
-      };
-    }
-
-    if (type === "category") {
-      updatedData[index] = {
-        ...updatedData[index],
-        category: event.target.value,
-      };
-    }
-
-    if (type === "date") {
-      updatedData[index] = {
-        ...updatedData[index],
-        date: event.target.value,
-      };
-    }
-
-    if (type === "note") {
-      updatedData[index] = {
-        ...updatedData[index],
-        note: event.target.value,
-      };
-    }
-
-    if (type === "delete") {
-      updatedData.splice(index, 1);
-    }
-
-    setTodosForm([...updatedData]);
-  }
   useEffect(() => {
     if (!user) {
       router.push("/login");
     }
   }, [user, logout]);
 
-  return (
-    <div className="min-h-screen flex flex-col gap-3 items-center justify-center bg-gray-100 p-6">
-      <button
-        onClick={logout}
-        className="absolute top-1 left-1 mt-4 bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 transition duration-300 ease-in-out"
-      >
-        Logout
-      </button>
-      <div className="bg-white p-8 rounded-lg shadow-lg w-full">
-        <button
-          onClick={backupData}
-          className="bg-blue-500 mb-5 text-white py-2 px-4 rounded-md hover:bg-blue-600 transition duration-300 ease-in-out disabled:hover:bg-slate-500 disabled:bg-slate-500"
-          disabled={backupState == todosForm ? true : false}
-          // disabled
-        >
-          {backupState == todosForm ? "Updated" : "Backup Now"}
-        </button>
-        <div className="text-end">{editForm?.title}</div>
-        <div className="text-end">{editForm?.amount}</div>
-        <div className="text-end">{editForm?.category}</div>
-        <div className="text-end">{editForm?.note}</div>
+  useEffect(() => {
+    if (user) {
+      const unsubscribe = onSnapshot(
+        collection(db, "users", user?.uid, "expenses"),
+        (snapshot) => {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === "removed") {
+              console.log("Removed Data: ", change.doc.data());
+            }
+          });
+          const updatedTodos = snapshot.docs.map((doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          }));
+          setTodosForm(updatedTodos);
+        }
+      );
+      return () => unsubscribe();
+    }
+  }, [user]);
 
+  const [todosForm, setTodosForm] = useState([]);
+
+  const [editForm, setEditForm] = useState([
+    {
+      title: "",
+      amount: 0,
+      category: "Select Category",
+      date: formattedDate,
+      note: "",
+    },
+  ]);
+
+  async function AddExpense() {
+    const colRef = collection(db, "users", user?.uid, "expenses");
+
+    const pushData = await addDoc(colRef, {
+      ...editForm,
+      userId: user?.uid,
+    });
+
+    console.log(colRef, pushData);
+
+    setEditForm({
+      title: "",
+      amount: 0,
+      category: "Select Category",
+      date: formattedDate,
+      note: "",
+    });
+    setModel(-1);
+  }
+
+  async function deleteEntry(id) {
+    const entryToDelete = doc(db, "users", user.uid, "expenses", id);
+    await deleteDoc(entryToDelete);
+    console.log("Delete", id);
+  }
+
+  return (
+    // <div className="min-h-screen flex flex-col gap-3 items-center justify-center bg-gray-100 p-6">
+    //   <button
+    //     onClick={logout}
+    //     className="absolute top-1 left-1 mt-4 bg-red-500 text-white py-2 px-4 rounded-md hover:bg-red-600 transition duration-300 ease-in-out"
+    //   >
+    //     Logout
+    //   </button>
+    <>
+      <header>
+        <div className="navbar bg-base-100">
+          <div className="flex-1">
+            <a className="btn btn-ghost text-xl">NexExpense</a>
+          </div>
+          <div className="flex-none">
+            <div className="dropdown dropdown-end">
+              <div
+                tabIndex={0}
+                role="button"
+                className="btn btn-ghost btn-circle"
+              >
+                <div className="indicator">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                    />
+                  </svg>
+                  <span className="badge badge-sm indicator-item">8</span>
+                </div>
+              </div>
+              <div
+                tabIndex={0}
+                className="card card-compact dropdown-content bg-base-100 z-[1] mt-3 w-52 shadow"
+              >
+                <div className="card-body">
+                  <span className="text-lg font-bold">8 Items</span>
+                  <span className="text-info">Subtotal: $999</span>
+                  <div className="card-actions">
+                    <button className="btn btn-primary btn-block">
+                      View cart
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <button className="btn btn-warning" onClick={logout}>
+              Logout
+            </button>
+          </div>
+        </div>
+      </header>
+      <div className="bg-white p-8 rounded-lg shadow-lg w-full">
         <h1 className="text-2xl font-semibold text-gray-800 text-center mb-6">
           Welcome to the Expense Management
         </h1>
         <div className="overflow-x-auto">
-          {/* <div className="flex flex-col gap-2"> */}
           <table class="table">
             <thead>
               <tr>
@@ -193,17 +162,18 @@ function Home() {
 
             <tbody>
               {todosForm.map((todo, index) => (
-                <tr>
-                  <td>{todo.title}</td>
-                  <td>{todo.amount}</td>
-                  <td>{todo.category}</td>
-                  <td>{todo.date}</td>
-                  <td>{todo.note}</td>
+                <tr key={todo?.id || index}>
+                  <td>{todo?.title}</td>
+                  <td>{todo?.amount}</td>
+                  <td>{todo?.category}</td>
+                  <td>{todo?.date}</td>
+                  {/* <td>Test</td> */}
+                  <td>{todo?.note}</td>
                   <td>
                     <button
                       onClick={() => {
                         setModel(index);
-                        setEditFrom(todosForm[index]);
+                        setEditForm(todosForm[index]);
                       }}
                     >
                       <svg
@@ -224,9 +194,7 @@ function Home() {
                         />
                       </svg>
                     </button>
-                    <button
-                      onClick={(e) => handleInputChange(e, index, "delete")}
-                    >
+                    <button onClick={() => deleteEntry(todo?.id)}>
                       <svg
                         class="w-6 h-6 text-red-500 hover:text-red-700 dark:text-white"
                         aria-hidden="true"
@@ -250,16 +218,15 @@ function Home() {
               ))}
             </tbody>
           </table>
-          {/* </div> */}
         </div>
         <button
           onClick={() => {
             setModel(todosForm.length);
-            setEditFrom({
+            setEditForm({
               title: "",
               amount: 0,
               category: "Select Category",
-              date: now.getDate(),
+              date: formattedDate,
               note: "",
             });
           }}
@@ -268,7 +235,6 @@ function Home() {
           Add Expense
         </button>
       </div>
-
       {model != -1 && (
         <div className="absolute top-0 left-0 w-screen h-screen flex flex-col justify-center items-center bg-[#aaaaaaaa]">
           <div className="bg-white p-8 rounded-lg shadow-lg w-full max-w-md flex flex-col gap-3">
@@ -280,10 +246,10 @@ function Home() {
                 type="text"
                 value={editForm?.title}
                 onChange={(e) =>
-                  setEditFrom({ ...editForm, title: e.target.value })
+                  setEditForm({ ...editForm, title: e.target.value })
                 }
                 className="input input-bordered w-full"
-                placeholder="Daisy"
+                placeholder="Pizza"
               />
             </label>
             <label className="form-control">
@@ -294,10 +260,10 @@ function Home() {
                 type="number"
                 value={editForm?.amount}
                 onChange={(e) =>
-                  setEditFrom({ ...editForm, amount: e.target.value })
+                  setEditForm({ ...editForm, amount: e.target.value })
                 }
                 className="input input-bordered w-full"
-                placeholder="Daisy"
+                placeholder="550"
               />
             </label>
 
@@ -309,7 +275,7 @@ function Home() {
                 className="select select-bordered"
                 value={editForm?.category}
                 onChange={(e) =>
-                  setEditFrom({ ...editForm, category: e.target.value })
+                  setEditForm({ ...editForm, category: e.target.value })
                 }
               >
                 <option disabled selected>
@@ -332,10 +298,10 @@ function Home() {
               </div>
               <input
                 className="input input-bordered w-full"
-                type="datetime-local"
+                type="date"
                 value={editForm?.date}
                 onChange={(e) =>
-                  setEditFrom({ ...editForm, date: e.target.value })
+                  setEditForm({ ...editForm, date: e.target.value })
                 }
               />
             </label>
@@ -349,7 +315,7 @@ function Home() {
                 placeholder="Note"
                 value={editForm?.note}
                 onChange={(e) =>
-                  setEditFrom({ ...editForm, note: e.target.value })
+                  setEditForm({ ...editForm, note: e.target.value })
                 }
               ></textarea>
             </label>
@@ -361,17 +327,7 @@ function Home() {
               <button
                 className="btn btn-primary"
                 onClick={() => {
-                  let updatedData = [...todosForm];
-                  updatedData[model] = { ...editForm };
-                  setTodosForm(updatedData);
-                  setEditFrom({
-                    title: "",
-                    amount: 0,
-                    category: "Select Category",
-                    date: now.getDate(),
-                    note: "",
-                  });
-                  setModel(-1);
+                  AddExpense();
                 }}
               >
                 Save
@@ -404,7 +360,8 @@ function Home() {
           </div>
         </div>
       )}
-    </div>
+    </>
+    // </div>
   );
 }
 
